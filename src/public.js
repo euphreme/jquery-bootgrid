@@ -27,7 +27,7 @@ var Grid = function(element, options)
     this.rows = [];
     this.searchPhrase = "";
     this.selectedRows = [];
-    this.sort = {};
+    this.sortDictionary = {};
     this.total = 0;
     this.totalPages = 0;
     this.cachedParams = {
@@ -44,8 +44,6 @@ var Grid = function(element, options)
 
 /**
  * An object that represents the default settings.
- * There are two ways to override the sub-properties.
- * Either by doing it generally (global) or on initialization.
  *
  * @static
  * @class defaults
@@ -97,7 +95,7 @@ Grid.defaults = {
     rowSelect: false,
 
     /**
-     * Defines whether the row selection is saved internally on filtering, paging and sorting 
+     * Defines whether the row selection is saved internally on filtering, paging and sorting
      * (even if the selected rows are not visible).
      *
      * @property keepSelection
@@ -111,10 +109,73 @@ Grid.defaults = {
     highlightRows: false, // highlights new rows (find the page of the first new row)
     sorting: true,
     multiSort: false,
-    ajax: false, // todo: find a better name for this property to differentiate between client-side and server-side data
 
     /**
-     * Enriches the request object with additional properties. Either a `PlainObject` or a `Function` 
+     * General search settings to configure the search field behaviour.
+     *
+     * @property searchSettings
+     * @type Object
+     * @for defaults
+     * @since 1.2.0
+     **/
+    searchSettings: {
+        /**
+         * The time in milliseconds to wait before search gets executed.
+         *
+         * @property delay
+         * @type Number
+         * @default 250
+         * @for searchSettings
+         **/
+        delay: 250,
+        
+        /**
+         * The characters to type before the search gets executed.
+         *
+         * @property characters
+         * @type Number
+         * @default 1
+         * @for searchSettings
+         **/
+        characters: 1
+    },
+
+    /**
+     * Defines whether the data shall be loaded via an asynchronous HTTP (Ajax) request.
+     *
+     * @property ajax
+     * @type Boolean
+     * @default false
+     * @for defaults
+     **/
+    ajax: false,
+
+    /**
+     * Ajax request settings that shall be used for server-side communication.
+     * All setting except data, error, success and url can be overridden.
+     * For the full list of settings go to http://api.jquery.com/jQuery.ajax/.
+     *
+     * @property ajaxSettings
+     * @type Object
+     * @for defaults
+     * @since 1.2.0
+     **/
+    ajaxSettings: {
+        /**
+         * Specifies the HTTP method which shall be used when sending data to the server.
+         * Go to http://api.jquery.com/jQuery.ajax/ for more details.
+         * This setting is overriden for backward compatibility.
+         *
+         * @property method
+         * @type String
+         * @default "POST"
+         * @for ajaxSettings
+         **/
+        method: "POST"
+    },
+
+    /**
+     * Enriches the request object with additional properties. Either a `PlainObject` or a `Function`
      * that returns a `PlainObject` can be passed. Default value is `{}`.
      *
      * @property post
@@ -126,7 +187,7 @@ Grid.defaults = {
     post: {}, // or use function () { return {}; } (reserved properties are "current", "rowCount", "sort" and "searchPhrase")
 
     /**
-     * Sets the data URL to a data service (e.g. a REST service). Either a `String` or a `Function` 
+     * Sets the data URL to a data service (e.g. a REST service). Either a `String` or a `Function`
      * that returns a `String` can be passed. Default value is `""`.
      *
      * @property url
@@ -215,6 +276,7 @@ Grid.defaults = {
         iconColumns: "glyphicon-th-list",
         iconDown: "glyphicon-chevron-down",
         iconRefresh: "glyphicon-refresh",
+        iconSearch: "glyphicon-search",
         iconUp: "glyphicon-chevron-up",
         infos: "infos", // must be a unique class name or constellation of class names within the header and footer,
         left: "text-left",
@@ -280,6 +342,52 @@ Grid.defaults = {
     },
 
     /**
+     * Specifies the mapping between status and contextual classes to color rows.
+     *
+     * @property statusMapping
+     * @type Object
+     * @for defaults
+     * @since 1.2.0
+     **/
+    statusMapping: {
+        /**
+         * Specifies a successful or positive action.
+         *
+         * @property 0
+         * @type String
+         * @for statusMapping
+         **/
+        0: "success",
+
+        /**
+         * Specifies a neutral informative change or action.
+         *
+         * @property 1
+         * @type String
+         * @for statusMapping
+         **/
+        1: "info",
+
+        /**
+         * Specifies a warning that might need attention.
+         *
+         * @property 2
+         * @type String
+         * @for statusMapping
+         **/
+        2: "warning",
+        
+        /**
+         * Specifies a dangerous or potentially negative action.
+         *
+         * @property 3
+         * @type String
+         * @for statusMapping
+         **/
+        3: "danger"
+    },
+
+    /**
      * Contains all templates.
      *
      * @property templates
@@ -293,10 +401,10 @@ Grid.defaults = {
         actionDropDownCheckboxItem: "<li><label class=\"{{css.dropDownItem}}\"><input name=\"{{ctx.name}}\" type=\"checkbox\" value=\"1\" class=\"{{css.dropDownItemCheckbox}}\" {{ctx.checked}} /> {{ctx.label}}</label></li>",
         actions: "<div class=\"{{css.actions}}\"></div>",
         body: "<tbody></tbody>",
-        cell: "<td class=\"{{ctx.css}}\">{{ctx.content}}</td>",
+        cell: "<td class=\"{{ctx.css}}\" style=\"{{ctx.style}}\">{{ctx.content}}</td>",
         footer: "<div id=\"{{ctx.id}}\" class=\"{{css.footer}}\"><div class=\"row\"><div class=\"col-sm-6\"><p class=\"{{css.pagination}}\"></p></div><div class=\"col-sm-6 infoBar\"><p class=\"{{css.infos}}\"></p></div></div></div>",
         header: "<div id=\"{{ctx.id}}\" class=\"{{css.header}}\"><div class=\"row\"><div class=\"col-sm-12 actionBar\"><p class=\"{{css.search}}\"></p><p class=\"{{css.actions}}\"></p></div></div></div>",
-        headerCell: "<th data-column-id=\"{{ctx.column.id}}\" class=\"{{ctx.css}}\"><a href=\"javascript:void(0);\" class=\"{{css.columnHeaderAnchor}} {{ctx.sortable}}\"><span class=\"{{css.columnHeaderText}}\">{{ctx.column.text}}</span>{{ctx.icon}}</a></th>",
+        headerCell: "<th data-column-id=\"{{ctx.column.id}}\" class=\"{{ctx.css}}\" style=\"{{ctx.style}}\"><a href=\"javascript:void(0);\" class=\"{{css.columnHeaderAnchor}} {{ctx.sortable}}\"><span class=\"{{css.columnHeaderText}}\">{{ctx.column.text}}</span>{{ctx.icon}}</a></th>",
         icon: "<span class=\"{{css.icon}} {{ctx.iconCss}}\"></span>",
         infos: "<div class=\"{{css.infos}}\">{{lbl.infos}}</div>",
         loading: "<tr><td colspan=\"{{ctx.columns}}\" class=\"loading\">{{lbl.loading}}</td></tr>",
@@ -305,7 +413,7 @@ Grid.defaults = {
         paginationItem: "<li class=\"{{ctx.css}}\"><a href=\"{{ctx.uri}}\" class=\"{{css.paginationButton}}\">{{ctx.text}}</a></li>",
         rawHeaderCell: "<th class=\"{{ctx.css}}\">{{ctx.content}}</th>", // Used for the multi select box
         row: "<tr{{ctx.attr}}>{{ctx.cells}}</tr>",
-        search: "<div class=\"{{css.search}}\"><div class=\"input-group\"><span class=\"{{css.icon}} input-group-addon glyphicon-search\"></span> <input type=\"text\" class=\"{{css.searchField}}\" placeholder=\"{{lbl.search}}\" /></div></div>",
+        search: "<div class=\"{{css.search}}\"><div class=\"input-group\"><span class=\"{{css.icon}} input-group-addon {{css.iconSearch}}\"></span> <input type=\"text\" class=\"{{css.searchField}}\" placeholder=\"{{lbl.search}}\" /></div></div>",
         select: "<input name=\"select\" type=\"{{ctx.type}}\" class=\"{{css.selectBox}}\" value=\"{{ctx.value}}\" {{ctx.checked}} />"
     }
 };
@@ -452,20 +560,26 @@ Grid.prototype.remove = function(rowIds)
 };
 
 /**
- * Searches in all rows for a specific phrase (but only in visible cells).
+ * Searches in all rows for a specific phrase (but only in visible cells). 
+ * The search filter will be reseted, if no argument is provided.
  *
  * @method search
- * @param phrase {String} The phrase to search for
+ * @param [phrase] {String} The phrase to search for
  * @chainable
  **/
 Grid.prototype.search = function(phrase)
 {
+    phrase = phrase || "";
+
     if (this.searchPhrase !== phrase)
     {
-        this.current = 1;
-        this.searchPhrase = phrase;
-        loadData.call(this);
+        var selector = getCssSelector(this.options.css.searchField),
+            searchFields = findFooterAndHeaderItems.call(this, selector);
+        searchFields.val(phrase);
     }
+
+    executeSearch.call(this, phrase);
+
 
     return this;
 };
@@ -484,7 +598,7 @@ Grid.prototype.select = function(rowIds)
     {
         rowIds = rowIds || this.currentRows.propValues(this.identifier);
 
-        var id, i, 
+        var id, i,
             selectedRows = [];
 
         while (rowIds.length > 0 && !(!this.options.multiSelect && selectedRows.length === 1))
@@ -582,7 +696,7 @@ Grid.prototype.deselect = function(rowIds)
                     .removeClass(this.options.css.selected)._bgAria("selected", "false")
                     .find(selectBoxSelector).prop("checked", false);
             }
-            
+
             this.element.trigger("deselected" + namespace, [deselectedRows]);
         }
     }
@@ -590,27 +704,153 @@ Grid.prototype.deselect = function(rowIds)
     return this;
 };
 
-
 /**
- * Sorts rows.
+ * Sorts the rows by a given sort descriptor dictionary. 
+ * The sort filter will be reseted, if no argument is provided.
  *
  * @method sort
- * @param dictionary {Object} A dictionary which contains the sort information
+ * @param [dictionary] {Object} A sort descriptor dictionary that contains the sort information
  * @chainable
  **/
 Grid.prototype.sort = function(dictionary)
 {
     var values = (dictionary) ? $.extend({}, dictionary) : {};
-    if (values === this.sort)
+
+    if (values === this.sortDictionary)
     {
         return this;
     }
 
-    this.sort = values;
-
+    this.sortDictionary = values;
     renderTableHeader.call(this);
     sortRows.call(this);
     loadData.call(this);
 
     return this;
+};
+
+/**
+ * Gets a list of the column settings.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getColumnSettings
+ * @return {Array} Returns a list of the column settings.
+ * @since 1.2.0
+ **/
+Grid.prototype.getColumnSettings = function()
+{
+    return $.merge([], this.columns);
+};
+
+/**
+ * Gets the current page index.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getCurrentPage
+ * @return {Number} Returns the current page index.
+ * @since 1.2.0
+ **/
+Grid.prototype.getCurrentPage = function()
+{
+    return this.current;
+};
+
+/**
+ * Gets the current rows.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getCurrentPage
+ * @return {Array} Returns the current rows.
+ * @since 1.2.0
+ **/
+Grid.prototype.getCurrentRows = function()
+{
+    return $.merge([], this.currentRows);
+};
+
+/**
+ * Gets a number represents the row count per page.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getRowCount
+ * @return {Number} Returns the row count per page.
+ * @since 1.2.0
+ **/
+Grid.prototype.getRowCount = function()
+{
+    return this.rowCount;
+};
+
+/**
+ * Gets the actual search phrase.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getSearchPhrase
+ * @return {String} Returns the actual search phrase.
+ * @since 1.2.0
+ **/
+Grid.prototype.getSearchPhrase = function()
+{
+    return this.searchPhrase;
+};
+
+/**
+ * Gets the complete list of currently selected rows.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getSelectedRows
+ * @return {Array} Returns all selected rows.
+ * @since 1.2.0
+ **/
+Grid.prototype.getSelectedRows = function()
+{
+    return $.merge([], this.selectedRows);
+};
+
+/**
+ * Gets the sort dictionary which represents the state of column sorting.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getSortDictionary
+ * @return {Object} Returns the sort dictionary.
+ * @since 1.2.0
+ **/
+Grid.prototype.getSortDictionary = function()
+{
+    return $.extend({}, this.sortDictionary);
+};
+
+/**
+ * Gets a number represents the total page count.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getTotalPageCount
+ * @return {Number} Returns the total page count.
+ * @since 1.2.0
+ **/
+Grid.prototype.getTotalPageCount = function()
+{
+    return this.totalPages;
+};
+
+/**
+ * Gets a number represents the total row count.
+ * This method returns only for the first grid instance a value.
+ * Therefore be sure that only one grid instance is catched by your selector.
+ *
+ * @method getTotalRowCount
+ * @return {Number} Returns the total row count.
+ * @since 1.2.0
+ **/
+Grid.prototype.getTotalRowCount = function()
+{
+    return this.total;
 };
