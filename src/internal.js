@@ -101,7 +101,7 @@ function loadColumns() {
                 order: (!sorted && (data.order === "asc" || data.order === "desc")) ? data.order : null,
                 searchable: !(data.searchable === false), // default: true
                 sortable: !(data.sortable === false), // default: true
-                visible: !(data.visible === false), // default: true
+                visible: !(data.visible === false) && (that.options.columns && that.options.columns[data.columnId] && that.options.columns[data.columnId].visible == true), // default: true
                 width: ($.isNumeric(data.width)) ? data.width + "px" :
                     (typeof(data.width) === "string") ? data.width : null
             };
