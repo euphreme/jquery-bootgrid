@@ -94,9 +94,9 @@ function loadColumns() {
                 converter: that.options.converters[data.converter || data.type] || that.options.converters["string"],
                 text: $this.text(),
                 align: data.align || "left",
-                headerAlign: data.headerAlign || "left",
-                cssClass: data.cssClass || "",
-                headerCssClass: data.headerCssClass || "",
+                headerAlign: data.headerAlign || data.headeralign || "left",
+                cssClass: data.cssClass || data.cssclass || "",
+                headerCssClass: data.headerCssClass || data.headercssclass || "",
                 formatter: that.options.formatters[data.formatter] || null,
                 order: (!sorted && (data.order === "asc" || data.order === "desc")) ? data.order : null,
                 searchable: !(data.searchable === false), // default: true
@@ -621,7 +621,7 @@ function renderSearchField() {
             var that = this,
                 tpl = this.options.templates,
                 timer = null, // fast keyup detection
-                currentValue = "",
+                currentValue = this.options.searchPhrase,
                 searchFieldSelector = getCssSelector(css.searchField),
                 search = $(tpl.search.resolve(getParams.call(this))),
                 searchField = (search.is(searchFieldSelector)) ? search :
@@ -799,6 +799,13 @@ function sortRows() {
             return (item.order === "asc") ? value : value * -1;
         }
 
+        if (item.comparator) {
+            var comparedRes = item.comparator.call(item, x, y);
+            return (comparedRes > 0) ? sortOrder(1) :
+                (comparedRes < 0) ? sortOrder(-1) :
+                    (sortArray.length > next) ? sort(x, y, next) : 0;
+        }
+
         return (x[item.id] > y[item.id]) ? sortOrder(1) :
             (x[item.id] < y[item.id]) ? sortOrder(-1) :
                 (sortArray.length > next) ? sort(x, y, next) : 0;
@@ -811,7 +818,8 @@ function sortRows() {
             if (this.options.multiSort || sortArray.length === 0) {
                 sortArray.push({
                     id: key,
-                    order: this.sortDictionary[key]
+                    order: this.sortDictionary[key],
+                    comparator: (this.options.comparators) ? this.options.comparators[key] : null
                 });
             }
         }
